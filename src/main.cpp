@@ -10,6 +10,12 @@
 
 #include <gtsam/slam/PriorFactor.h>
 #include <gtsam/slam/BetweenFactor.h>
+#include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
+
+// Once the optimized values have been calculated, we can also calculate the marginal covariance
+// of desired variables
+#include <gtsam/nonlinear/Marginals.h>
+
 
 #include <iostream>
 #include <cmath>
@@ -141,8 +147,11 @@ int main(int argc, char** argv)
     argv[5] =0;
 
     vector<Pose3> vecPoses, clcPoses;
-    Pose3 currentPose;
-    vecPoses.push_back(Pose3(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0)));
+    Pose3 currentPose(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0));
+    noiseModel::Diagonal::shared_ptr priorNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1))); // 20cm std on x,y, 0.1 rad on theta
+    graph.add(PriorFactor<Pose3>(Symbol('x', 0), currentPose, priorNoise)); // add directly to graph
+
+
     for( int index = 1; argv[index] != 0; index++ )
     {
         cv::Mat original_image = cv::imread(argv[index], 1);
@@ -151,9 +160,13 @@ int main(int argc, char** argv)
             return -1;
         }
         cv::resize(original_image, original_image, Size(1024, 768));
-
-
-
+        noiseModel::Diagonal::shared_ptr odometryNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1))); // 20cm std on x,y, 0.1 rad on theta
+        Pose3 odometry(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0));
+        currentPose.compose(odometry);
+        vecPoses.push_back(currentPose);
+        if(index > 1){
+        graph.add(BetweenFactor<Pose3>(Symbol('x', index-2), Symbol('x', index-1), odometry, odometryNoise));
+        }
         initialEstimate.insert(Symbol('x', index-1), vecPoses[index-1].compose(Pose3(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0))));
 
         char inputFlag;
@@ -194,6 +207,10 @@ int main(int argc, char** argv)
                 noiseModel::Diagonal::shared_ptr clcPoseNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1))); // 20cm std on x,y, 0.1 rad on theta
                 graph.add(BetweenFactor<Pose3>(Symbol('x', index-1), Symbol('l', ID_rect), clcPose, clcPoseNoise));
                 clcPoses.push_back(clcPose);
+                if(index==1){
+                    //Todo : check landmark symbol is in the graph
+                    initialEstimate.insert(Symbol('l', ID_rect), currentPose.compose(clcPose));
+                }
                 clc.Visualization(image);
                 cv::imshow("Image", image);
                 cv::waitKey(1);
@@ -201,57 +218,28 @@ int main(int argc, char** argv)
             }
         }while(inputFlag != 'f');
         inputFlag = 0;
-        //4. EKF Correction
-        if( index == 1) {
-            // Add a prior on pose x0
-            noiseModel::Diagonal::shared_ptr vecPoseNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << Vector3::Constant(0.3),Vector3::Constant(0.1))); // 30cm std on x,y,z 0.1 rad on roll,pitch,yaw
-            graph.push_back(PriorFactor<Pose3>(Symbol('x', 0), vecPoses[0], vecPoseNoise));
-
-            // Add a prior on landmark l0
-            noiseModel::Diagonal::shared_ptr clcPoseNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1))); // 20cm std on x,y, 0.1 rad on theta
-            graph.push_back(PriorFactor<Pose3>(Symbol('l', 0), clcPoses[0], clcPoseNoise)); // add directly to graph
-
-            // Add initial guesses to all observed landmarks
-            // Intentionally initialize the variables off from the ground truth
-            //for (size_t j = 0; j < clcPoses.size(); ++j)
-            //initialEstimate.insert(Symbol('l', j), clcPoses[j].compose(Pose3(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0))));
-
-        }else if( index == 2) {
-            // Add a prior on pose x0
-            noiseModel::Diagonal::shared_ptr vecPoseNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << Vector3::Constant(0.3),Vector3::Constant(0.1))); // 30cm std on x,y,z 0.1 rad on roll,pitch,yaw
-            graph.push_back(PriorFactor<Pose3>(Symbol('x', 1), vecPoses[0], vecPoseNoise));
-
-            // Add a prior on landmark l0
-            noiseModel::Diagonal::shared_ptr clcPoseNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1))); // 20cm std on x,y, 0.1 rad on theta
-            graph.push_back(PriorFactor<Pose3>(Symbol('l', 1), clcPoses[1], clcPoseNoise)); // add directly to graph
-
-            // Add initial guesses to all observed landmarks
-            // Intentionally initialize the variables off from the ground truth
-            for (size_t j = 0; j < clcPoses.size(); ++j)
-            initialEstimate.insert(Symbol('l', j), clcPoses[j].compose(Pose3(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0))));
-
-        } else {
-          // Update iSAM with the new factors
-
-            ISAM2Result result = isam.update(graph, initialEstimate);
-            cout << "cliques: " << result.cliques << "\terr_before: " << *(result.errorBefore) << "\terr_after: " << *(result.errorAfter) << "\trelinearized: " << result.variablesRelinearized << endl;
-
-          // Each call to iSAM2 update(*) performs one iteration of the iterative nonlinear solver.
-          // If accuracy is desired at the expense of time, update(*) can be called additional times
-          // to perform multiple optimizer iterations every step.
-          isam.update();
-          Values currentEstimate = isam.calculateEstimate();
-          cout << "****************************************************" << endl;
-          cout << "Frame " << i << ": " << endl;
-          currentEstimate.print("Current estimate: ");
-          vecPoses.push_back(Pose3(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0)));
-
-          // Clear the factor graph and values for the next iteration
-          graph.resize(0);
-          initialEstimate.clear();
-        }
 
     }
+
+    // Print
+    initialEstimate.print("Initial Estimate:\n");
+
+    // Optimize using Levenberg-Marquardt optimization. The optimizer
+    // accepts an optional set of configuration parameters, controlling
+    // things like convergence criteria, the type of linear system solver
+    // to use, and the amount of information displayed during optimization.
+    // Here we will use the default set of parameters.  See the
+    // documentation for the full set of parameters.
+    LevenbergMarquardtOptimizer optimizer(graph, initialEstimate);
+    Values result = optimizer.optimize();
+    result.print("Final Result:\n");
+
+    // Calculate and print marginal covariances for all variables
+    Marginals marginals(graph, result);
+    print(marginals.marginalCovariance(Symbol('x',1)), "x1 covariance");
+    print(marginals.marginalCovariance(Symbol('x',2)), "x2 covariance");
+    print(marginals.marginalCovariance(Symbol('x',3)), "x3 covariance");
+
 
     return 0;
 }
