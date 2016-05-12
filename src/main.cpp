@@ -10,6 +10,12 @@
 
 #include <gtsam/slam/PriorFactor.h>
 #include <gtsam/slam/BetweenFactor.h>
+#include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
+
+// Once the optimized values have been calculated, we can also calculate the marginal covariance
+// of desired variables
+#include <gtsam/nonlinear/Marginals.h>
+
 
 #include <iostream>
 #include <cmath>
@@ -26,26 +32,20 @@ using namespace gtsam;
 #include <gtsam/nonlinear/NonlinearFactor.h>
 /*
 class CLCBinaryFactor: public NoiseModelFactor2<Pose3, Pose3> {
-
   // The factor will hold a measurement consisting of an (X,Y) location
   // We could this with a Point2 but here we just use two doubles
   Pose3 mx_, my_;
-
 public:
   /// shorthand for a smart pointer to a factor
   typedef boost::shared_ptr<CLCBinaryFactor> shared_ptr;
-
   // The constructor requires the variable key, the (X, Y) measurement value, and the noise model
   CLCBinaryFactor(Key i, Key j, Pose3 x, Pose3 y, const SharedNoiseModel& model):
     NoiseModelFacto2<Pose3, Pose3>(model, j), mx_(x), my_(y) {}
-
   virtual ~CLCBinaryFactor() {}
-
   // Using the NoiseModelFactor1 base class there are two functions that must be overridden.
   // The first is the 'evaluateError' function. This function implements the desired measurement
   // function, returning a vector of errors when evaluated at the provided variable value. It
   // must also calculate the Jacobians for this measurement function, if requested.
-
   // h(x)-z -> between(z,h(x)) for Rot manifold
   Vector evaluateError(const Pose& pose, const Point& point,
       boost::optional<Matrix&> H1, boost::optional<Matrix&> H2) const {
@@ -63,35 +63,77 @@ public:
     boost::optional<Matrix&> H21_ = H1 ? boost::optional<Matrix&>(H21) : boost::optional<Matrix&>();
     boost::optional<Matrix&> H12_ = H2 ? boost::optional<Matrix&>(H12) : boost::optional<Matrix&>();
     boost::optional<Matrix&> H22_ = H2 ? boost::optional<Matrix&>(H22) : boost::optional<Matrix&>();
-
     Rot y1 = pose.bearing(point, H11_, H12_);
     Vector e1 = Rot::Logmap(measuredBearing_.between(y1));
-
     double y2 = pose.range(point, H21_, H22_);
     Vector e2 = (Vector(1) << y2 - measuredRange_);
-
     if (H1) *H1 = gtsam::stack(2, &H11, &H21);
     if (H2) *H2 = gtsam::stack(2, &H12, &H22);
     return concatVectors(2, &e1, &e2);
   }
-
-
   // The second is a 'clone' function that allows the factor to be copied. Under most
   // circumstances, the following code that employs the default copy constructor should
   // work fine.
   virtual gtsam::NonlinearFactor::shared_ptr clone() const {
     return boost::static_pointer_cast<gtsam::NonlinearFactor>(
         gtsam::NonlinearFactor::shared_ptr(new CLCBinaryFactor(*this))); }
-
   // Additionally, we encourage you the use of unit testing your custom factors,
   // (as all GTSAM factors are), in which you would need an equals and print, to satisfy the
   // GTSAM_CONCEPT_TESTABLE_INST(T) defined in Testable.h, but these are not needed below.
-
 }; // UnaryFactor
 */
 /* ************************************************************************* */
 
+bool SortPoints(vector<Point2f> &points)
+{
+    //    Point2d min_x = *std::min_element(points.begin(), points.end(), &_compare_min_x);
+    //    Point2d min_y = *std::min_element(points.begin(), points.end(), &_compare_min_y);
+    //    Point2d max_x = *std::max_element(points.begin(), points.end(), &_compare_min_x);
+    //    Point2d max_y = *std::max_element(points.begin(), points.end(), &_compare_min_y);
+    if(points.size()!=4){
+        std::cout<<"The number of Points is must be 4"<<std::endl;
+        return false;
+    }
+    Point2d center;
+    Point2d bottom_l, bottom_r, top_r, top_l;
+    bool isFoundBl=false, isFoundBr=false, isFoundTr=false, isFoundTl=false;
 
+    center.x = (points[0].x+points[1].x+points[2].x+points[3].x)/4;
+    center.y = (points[0].y+points[1].y+points[2].y+points[3].y)/4;
+
+    for(int i = 0; i < points.size();i++){
+        if(((points[i].x-center.x)<0)&&((points[i].y-center.y)>0)&&(!isFoundBl)){
+            bottom_l = points[i];
+            isFoundBl = true;
+            continue;
+        }
+        else if(((points[i].x-center.x)>0)&&((points[i].y-center.y)>0)&&(!isFoundBr)){
+            bottom_r = points[i];
+            isFoundBr = true;
+            continue;
+        }
+        else if(((points[i].x-center.x)>0)&&((points[i].y-center.y)<0)&&(!isFoundTr)){
+            top_r = points[i];
+            isFoundTr = true;
+            continue;
+        }
+        else if(((points[i].x-center.x)<0)&&((points[i].y-center.y)<0)&&(!isFoundTl)){
+            top_l = points[i];
+            isFoundTl = true;
+            continue;
+        }
+        else{
+            std::cout<<"Point sorting error : it's not quadrilateral."<<std::endl;
+            return false;
+        }
+    }
+    points.clear();
+    points.push_back(bottom_l);
+    points.push_back(bottom_r);
+    points.push_back(top_r);
+    points.push_back(top_l);
+    return true;
+}
 std::vector<cv::Point2f> keypoints1;
 int i = 0;
 
@@ -141,8 +183,11 @@ int main(int argc, char** argv)
     argv[5] =0;
 
     vector<Pose3> vecPoses, clcPoses;
-    Pose3 currentPose;
-    vecPoses.push_back(Pose3(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0)));
+    Pose3 currentPose(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0));
+    noiseModel::Diagonal::shared_ptr priorNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1))); // 20cm std on x,y, 0.1 rad on theta
+    graph.add(PriorFactor<Pose3>(Symbol('x', 0), currentPose, priorNoise)); // add directly to graph
+
+
     for( int index = 1; argv[index] != 0; index++ )
     {
         cv::Mat original_image = cv::imread(argv[index], 1);
@@ -151,9 +196,13 @@ int main(int argc, char** argv)
             return -1;
         }
         cv::resize(original_image, original_image, Size(1024, 768));
-
-
-
+        noiseModel::Diagonal::shared_ptr odometryNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1))); // 20cm std on x,y, 0.1 rad on theta
+        Pose3 odometry(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0));
+        currentPose.compose(odometry);
+        vecPoses.push_back(currentPose);
+        if(index > 1){
+        graph.add(BetweenFactor<Pose3>(Symbol('x', index-2), Symbol('x', index-1), odometry, odometryNoise));
+        }
         initialEstimate.insert(Symbol('x', index-1), vecPoses[index-1].compose(Pose3(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0))));
 
         char inputFlag;
@@ -181,6 +230,7 @@ int main(int argc, char** argv)
                 std::cout << "Input ID of this rectangle : ";
                 //std::cin >> ID_rect;
                 ID_rect = 0;
+                SortPoints(keypoints1);
                 clc.SetOffCenteredQuad(keypoints1);
                 clc.FindProxyQuadrilateral();
                 Vector3d trans; Quaternion<double> q;
@@ -194,6 +244,10 @@ int main(int argc, char** argv)
                 noiseModel::Diagonal::shared_ptr clcPoseNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1))); // 20cm std on x,y, 0.1 rad on theta
                 graph.add(BetweenFactor<Pose3>(Symbol('x', index-1), Symbol('l', ID_rect), clcPose, clcPoseNoise));
                 clcPoses.push_back(clcPose);
+                if(index==1){
+                    //Todo : check landmark symbol is in the graph
+                    initialEstimate.insert(Symbol('l', ID_rect), currentPose.compose(clcPose));
+                }
                 clc.Visualization(image);
                 cv::imshow("Image", image);
                 cv::waitKey(1);
@@ -201,57 +255,28 @@ int main(int argc, char** argv)
             }
         }while(inputFlag != 'f');
         inputFlag = 0;
-        //4. EKF Correction
-        if( index == 1) {
-            // Add a prior on pose x0
-            noiseModel::Diagonal::shared_ptr vecPoseNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << Vector3::Constant(0.3),Vector3::Constant(0.1))); // 30cm std on x,y,z 0.1 rad on roll,pitch,yaw
-            graph.push_back(PriorFactor<Pose3>(Symbol('x', 0), vecPoses[0], vecPoseNoise));
-
-            // Add a prior on landmark l0
-            noiseModel::Diagonal::shared_ptr clcPoseNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1))); // 20cm std on x,y, 0.1 rad on theta
-            graph.push_back(PriorFactor<Pose3>(Symbol('l', 0), clcPoses[0], clcPoseNoise)); // add directly to graph
-
-            // Add initial guesses to all observed landmarks
-            // Intentionally initialize the variables off from the ground truth
-            //for (size_t j = 0; j < clcPoses.size(); ++j)
-            //initialEstimate.insert(Symbol('l', j), clcPoses[j].compose(Pose3(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0))));
-
-        }else if( index == 2) {
-            // Add a prior on pose x0
-            noiseModel::Diagonal::shared_ptr vecPoseNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << Vector3::Constant(0.3),Vector3::Constant(0.1))); // 30cm std on x,y,z 0.1 rad on roll,pitch,yaw
-            graph.push_back(PriorFactor<Pose3>(Symbol('x', 1), vecPoses[0], vecPoseNoise));
-
-            // Add a prior on landmark l0
-            noiseModel::Diagonal::shared_ptr clcPoseNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1))); // 20cm std on x,y, 0.1 rad on theta
-            graph.push_back(PriorFactor<Pose3>(Symbol('l', 1), clcPoses[1], clcPoseNoise)); // add directly to graph
-
-            // Add initial guesses to all observed landmarks
-            // Intentionally initialize the variables off from the ground truth
-            for (size_t j = 0; j < clcPoses.size(); ++j)
-            initialEstimate.insert(Symbol('l', j), clcPoses[j].compose(Pose3(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0))));
-
-        } else {
-          // Update iSAM with the new factors
-
-            ISAM2Result result = isam.update(graph, initialEstimate);
-            cout << "cliques: " << result.cliques << "\terr_before: " << *(result.errorBefore) << "\terr_after: " << *(result.errorAfter) << "\trelinearized: " << result.variablesRelinearized << endl;
-
-          // Each call to iSAM2 update(*) performs one iteration of the iterative nonlinear solver.
-          // If accuracy is desired at the expense of time, update(*) can be called additional times
-          // to perform multiple optimizer iterations every step.
-          isam.update();
-          Values currentEstimate = isam.calculateEstimate();
-          cout << "****************************************************" << endl;
-          cout << "Frame " << i << ": " << endl;
-          currentEstimate.print("Current estimate: ");
-          vecPoses.push_back(Pose3(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0)));
-
-          // Clear the factor graph and values for the next iteration
-          graph.resize(0);
-          initialEstimate.clear();
-        }
 
     }
+
+    // Print
+    initialEstimate.print("Initial Estimate:\n");
+
+    // Optimize using Levenberg-Marquardt optimization. The optimizer
+    // accepts an optional set of configuration parameters, controlling
+    // things like convergence criteria, the type of linear system solver
+    // to use, and the amount of information displayed during optimization.
+    // Here we will use the default set of parameters.  See the
+    // documentation for the full set of parameters.
+    LevenbergMarquardtOptimizer optimizer(graph, initialEstimate);
+    Values result = optimizer.optimize();
+    result.print("Final Result:\n");
+
+    // Calculate and print marginal covariances for all variables
+    Marginals marginals(graph, result);
+    print(marginals.marginalCovariance(Symbol('x',1)), "x1 covariance");
+    print(marginals.marginalCovariance(Symbol('x',2)), "x2 covariance");
+    print(marginals.marginalCovariance(Symbol('x',3)), "x3 covariance");
+
 
     return 0;
 }

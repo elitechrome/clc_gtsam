@@ -22,6 +22,56 @@ bool Quadrilateral::SortPoints()
     Point2d center;
     Point2d bottom_l, bottom_r, top_r, top_l;
     bool isFoundBl=false, isFoundBr=false, isFoundTr=false, isFoundTl=false;
+
+    center.x = (points[0].x+points[1].x+points[2].x+points[3].x)/4;
+    center.y = (points[0].y+points[1].y+points[2].y+points[3].y)/4;
+
+    for(int i = 0; i < points.size();i++){
+        if(((points[i].x-center.x)<0)&&((points[i].y-center.y)>0)&&(!isFoundBl)){
+            bottom_l = points[i];
+            isFoundBl = true;
+            continue;
+        }
+        else if(((points[i].x-center.x)>0)&&((points[i].y-center.y)>0)&&(!isFoundBr)){
+            bottom_r = points[i];
+            isFoundBr = true;
+            continue;
+        }
+        else if(((points[i].x-center.x)>0)&&((points[i].y-center.y)<0)&&(!isFoundTr)){
+            top_r = points[i];
+            isFoundTr = true;
+            continue;
+        }
+        else if(((points[i].x-center.x)<0)&&((points[i].y-center.y)<0)&&(!isFoundTl)){
+            top_l = points[i];
+            isFoundTl = true;
+            continue;
+        }
+        else{
+            std::cout<<"Point sorting error : it's not quadrilateral."<<std::endl;
+            return false;
+        }
+    }
+    points.clear();
+    points.push_back(bottom_l);
+    points.push_back(bottom_r);
+    points.push_back(top_r);
+    points.push_back(top_l);
+    return true;
+}
+bool Quadrilateral::SortPoints(vector<Point2f> &points)
+{
+    //    Point2d min_x = *std::min_element(points.begin(), points.end(), &_compare_min_x);
+    //    Point2d min_y = *std::min_element(points.begin(), points.end(), &_compare_min_y);
+    //    Point2d max_x = *std::max_element(points.begin(), points.end(), &_compare_min_x);
+    //    Point2d max_y = *std::max_element(points.begin(), points.end(), &_compare_min_y);
+    if(points.size()!=4){
+        std::cout<<"The number of Points is must be 4"<<std::endl;
+        return false;
+    }
+    Point2d center;
+    Point2d bottom_l, bottom_r, top_r, top_l;
+    bool isFoundBl=false, isFoundBr=false, isFoundTr=false, isFoundTl=false;
     
     center.x = (points[0].x+points[1].x+points[2].x+points[3].x)/4;
     center.y = (points[0].y+points[1].y+points[2].y+points[3].y)/4;

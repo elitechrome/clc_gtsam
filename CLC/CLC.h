@@ -13,6 +13,17 @@ class Quadrilateral{
 public:
     vector<Point2f> points;
     bool SortPoints();
+    bool SortPoints(vector<Point2f> &points);
+};
+class RectFeature{
+private:
+    //geometric information
+    Quadrilateral imageQuad;
+
+
+    double aspectRatio;
+    Mat imagePatch;
+
 };
 class CLC{
 public:
