@@ -22,7 +22,8 @@ if(UNIX AND NOT APPLE)
    if(LINUX)
        message(STATUS ">>> Linux")
        find_package(Eigen REQUIRED)
-       include_directories(EIGEN3_INCLUDE_DIR)
+#       include_directories(EIGEN3_INCLUDE_DIR)
+       include_directories(.)
 
    else()
        message(STATUS ">>> Not Linux")
@@ -37,7 +38,8 @@ include_directories(CLC)
 add_library(clc CLC/CLC.cpp)
 
 include_directories(${GTSAM_INCLUDE_DIRS})
-include_directories(/opt/intel/mkl/include)
+#include_directories(/opt/intel/mkl/include)
+
 include_directories(
   ${catkin_INCLUDE_DIRS}
   ${Eigen_INCLUDE_DIRS}
@@ -45,7 +47,8 @@ include_directories(
 
 
 catkin_package(
- INCLUDE_DIRS ${Eigen_INCLUDE_DIRS} ${GTSAM_INCLUDE_DIRS} /opt/intel/mkl/include
+ INCLUDE_DIRS ${Eigen_INCLUDE_DIRS} ${GTSAM_INCLUDE_DIRS} 
+#/opt/intel/mkl/include
  LIBRARIES clc_test_gazebo
  CATKIN_DEPENDS gazebo_ros geometry_msgs roscpp sensor_msgs tf cv_bridge image_transport
  DEPENDS system_lib eigen

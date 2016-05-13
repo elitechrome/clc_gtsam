@@ -233,7 +233,7 @@ int main(int argc, char** argv)
                 SortPoints(keypoints1);
                 clc.SetOffCenteredQuad(keypoints1);
                 clc.FindProxyQuadrilateral();
-                Vector3d trans; Quaternion<double> q;
+                Vector3d trans; Eigen::Quaternion<double> q;
                 if(!clc.CalcCLC(trans, q))
                 {
                     std::cerr << "CLC is NaN" << std::endl;

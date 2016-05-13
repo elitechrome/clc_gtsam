@@ -96,7 +96,7 @@
     <visual>
       <origin xyz="0 0 0.5" rpy="0 0 0"/>
       <geometry>
-	<box size="0.00 0.00 0.95"/>
+	<box size="0.00001 0.00001 0.95"/>
       </geometry>
       <color rgba="0 0 0 0"/>
     </visual>

@@ -29,6 +29,7 @@ using namespace Eigen;
 using namespace gtsam;
 
 std::vector<Quadrilateral> vecQuad;
+vector<Pose3> vecPoses;
 int num =0;
 std::vector<cv::Point2f> keypoints1;
 int i = 0;
@@ -146,6 +147,7 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
 
     try
     {
+        num++;
         std::vector<vector<Point2f> > squares;
         cv::Mat original_image = cv_bridge::toCvShare(msg, "bgr8")->image;
         cv::Mat image;
@@ -154,10 +156,7 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
         CLC clc(283.11208, 283.11208, 320, 240);
         //clc.findSquares(image, squares);
 
-        vector<Pose3> vecPoses, clcPoses;
-        Pose3 currentPose(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0));
-        noiseModel::Diagonal::shared_ptr priorNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1))); // 20cm std on x,y, 0.1 rad on theta
-        graph.add(PriorFactor<Pose3>(Symbol('x', 0), currentPose, priorNoise)); // add directly to graph
+        vector<Pose3> clcPoses;
 
         if( original_image.empty() ){
             ROS_ERROR("No Image");
@@ -165,13 +164,13 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
         }
         noiseModel::Diagonal::shared_ptr odometryNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1))); // 20cm std on x,y, 0.1 rad on theta
         Pose3 odometry(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0));
+        Pose3 currentPose(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0));
+
+        currentPose.compose(vecPoses.back());
         currentPose.compose(odometry);
         vecPoses.push_back(currentPose);
-        if(num > 1){
-            graph.add(BetweenFactor<Pose3>(Symbol('x', num-2), Symbol('x', num-1), odometry, odometryNoise));
-
-        }
-        initialEstimate.insert(Symbol('x', num-1), vecPoses[num-1].compose(Pose3(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0))));
+        graph.add(BetweenFactor<Pose3>(Symbol('x', num-1), Symbol('x', num), odometry, odometryNoise));
+        initialEstimate.insert(Symbol('x', num), vecPoses[num].compose(Pose3(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0))));
 
         do{
             keypoints1.clear();
@@ -190,6 +189,9 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
 
             if (inputFlag == 'd'){
                 continue;
+            }
+            else if(inputFlag == 'q'){
+                return;
             } else{
                 //3. CLC Pose Calculation for each rectangle
                 int ID_rect=0;
@@ -200,16 +202,17 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
                 SortPoints(keypoints1);
                 clc.SetOffCenteredQuad(keypoints1);
                 clc.FindProxyQuadrilateral();
-                Vector3d trans; Quaternion<double> q;
+                Eigen::Vector3d trans; Eigen::Quaternion<double> q;
                 if(!clc.CalcCLC(trans, q))
                 {
                     std::cerr << "CLC is NaN" << std::endl;
                     continue;
                 }
-
-                Pose3 clcPose(Rot3::quaternion(q.w(),q.x(),q.y(),q.z()), Point3(trans[0], trans[1], trans[2])); // create a measurement for both factors (the same in this case)
-                noiseModel::Diagonal::shared_ptr clcPoseNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1))); // 20cm std on x,y, 0.1 rad on theta
-                graph.add(BetweenFactor<Pose3>(Symbol('x', num-1), Symbol('l', ID_rect), clcPose, clcPoseNoise));
+                // create a measurement for both factors (the same in this case)
+                Pose3 clcPose(Rot3::quaternion(q.w(),q.x(),q.y(),q.z()), Point3(trans[0], trans[1], trans[2]));
+                // 20cm std on x,y, 0.1 rad on theta
+                noiseModel::Diagonal::shared_ptr clcPoseNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1)));
+                graph.add(BetweenFactor<Pose3>(Symbol('x', num), Symbol('l', ID_rect), clcPose, clcPoseNoise));
                 clcPoses.push_back(clcPose);
                 if(num==1){
                     //Todo : check landmark symbol is in the graph
@@ -218,6 +221,7 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
                 clc.Visualization(image);
                 cv::imshow("Image", image);
                 inputFlag = cv::waitKey();
+                break;
             }
         }while(inputFlag != 'f' || inputFlag != 'q');
         if(inputFlag == 'q')
@@ -234,10 +238,19 @@ int main(int argc, char **argv)
 {
     ros::init(argc, argv, "clc_test_gazebo");
     ros::NodeHandle nh;
-    cv::namedWindow("view");
+    cv::namedWindow("Image");
     cv::startWindowThread();
     image_transport::ImageTransport it(nh);
     image_transport::Subscriber sub = it.subscribe("/multisense_sl/camera/left/image_raw", 1, imageCallback);
+
+    Pose3 currentPose(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0));
+    vecPoses.push_back(currentPose);
+
+    // 20cm std on x,y, 0.1 rad on theta
+    noiseModel::Diagonal::shared_ptr priorNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1)));
+    graph.add(PriorFactor<Pose3>(Symbol('x', 0), currentPose, priorNoise)); // add directly to graph
+    initialEstimate.insert(Symbol('x', 0), Pose3(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0)));
+
 
     while(inputFlag != 'q'){
         ros::spinOnce();
@@ -249,9 +262,10 @@ int main(int argc, char **argv)
     result.print("Final Result:\n");
 
     // Calculate and print marginal covariances for all variables
-    Marginals marginals(graph, result);
-    print(marginals.marginalCovariance(Symbol('x',1)), "x1 covariance");
-    print(marginals.marginalCovariance(Symbol('x',2)), "x2 covariance");
-    print(marginals.marginalCovariance(Symbol('x',3)), "x3 covariance");
+//    Marginals marginals(graph, result);
+//    print(marginals.marginalCovariance(Symbol('x',1)), "x1 covariance");
+//    print(marginals.marginalCovariance(Symbol('x',2)), "x2 covariance");
+//    print(marginals.marginalCovariance(Symbol('x',3)), "x3 covariance");
     cv::destroyAllWindows();
+    return 0;
 }
