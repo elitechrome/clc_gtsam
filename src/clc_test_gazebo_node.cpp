@@ -137,8 +137,8 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
         tvec.copyTo(extrinsic.rowRange(0, 3).col(3));
 
         std::cout << "extrinsic(tf):\n" << extrinsic  <<std::endl;
-        //tf::Quaternion rot_qt = transform.getRotation();
-        std::cout << "t(tf):\n" << (-R.inv()*tvec).t() <<std::endl;
+        tf::Quaternion rot_qt = transform.getRotation();
+        std::cout << "q(tf):\n" << rot_qt.getW() << "," << rot_qt.getX() << "," << rot_qt.getY() << "," << rot_qt.getZ() <<std::endl;
     }
     catch (tf::TransformException ex){
         ROS_ERROR("%s",ex.what());
@@ -203,15 +203,19 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
                 clc.SetOffCenteredQuad(keypoints1);
                 clc.FindProxyQuadrilateral();
                 Eigen::Vector3d trans; Eigen::Quaternion<double> q;
-                if(!clc.CalcCLC(trans, q))
+                if(!clc.CalcCLC(trans, q, 1.0))
                 {
                     std::cerr << "CLC is NaN" << std::endl;
                     continue;
                 }
                 // create a measurement for both factors (the same in this case)
+                //?????why do I use negetive sign for w, x in quaternion???
                 Pose3 clcPose(Rot3::quaternion(q.w(),q.x(),q.y(),q.z()), Point3(trans[0], trans[1], trans[2]));
                 // 20cm std on x,y, 0.1 rad on theta
-                noiseModel::Diagonal::shared_ptr clcPoseNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1)));
+                print(clcPose);
+                std::cout <<q.w()<<","<<q.x()<<","<<q.y()<<","<<q.z()<<std::endl;
+                noiseModel::Diagonal::shared_ptr clcPoseNoise
+                        = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1)));
                 graph.add(BetweenFactor<Pose3>(Symbol('x', num), Symbol('l', ID_rect), clcPose, clcPoseNoise));
                 clcPoses.push_back(clcPose);
                 if(num==1){

@@ -184,7 +184,7 @@ bool CLC::FindProxyQuadrilateral()
     quadCentered.points.push_back(u2); quadCentered.points.push_back(u3);
     return true;
 }
-bool CLC::CalcCLC(Vector3d &trans, Quaternion<double> &q)
+bool CLC::CalcCLC(Vector3d &trans, Quaternion<double> &q, double distance)
 {
     //determinate that the projective quadrilateral is rectangle in real world
     double l0 = sqrt(pow((quadCentered.points[0].x - um.x), 2) + pow((quadCentered.points[0].y - um.y), 2));
@@ -223,7 +223,7 @@ bool CLC::CalcCLC(Vector3d &trans, Quaternion<double> &q)
         std::cerr << "Crossing Angle is NaN" << std::endl;
     }
     cout<<"Crossing Angle : "<<phi<<endl;
-    d=1;
+    d=distance;
     Point3d pc(d *cos(theta0)*sin(phi) / sin(phi), -d *cos(theta0)*cos(phi) + cos(theta1) / sin(phi), d *sin(theta0)*sin(theta1)*sin(rho) / sin(phi));
     //cout << "Principle point :\n" << pc << endl;
     
@@ -283,7 +283,19 @@ bool CLC::CalcCLC(Vector3d &trans, Quaternion<double> &q)
     rot<< pose.at<float>(0,0), pose.at<float>(0,1), pose.at<float>(0,2),
     pose.at<float>(1,0), pose.at<float>(1,1), pose.at<float>(1,2),
     pose.at<float>(2,0), pose.at<float>(2,1), pose.at<float>(2,2);
-    q = rot;
+    q=rot;
+    //Eigen::Quaternion<double> tmp_q = rot;
+    //////////////////////////////////////////////
+    ////need to be confirmed
+    if(phi > 0 && phi < M_PI/2){
+        q.coeffs()[1] *= -1.;
+        q.coeffs()[2] *= -1.;
+    }
+    else {
+        q.coeffs()[0] *= -1.;
+        q.coeffs()[3] *= -1.;
+    }
+    //////////////////////////////////////////////
     trans << pose.at<float>(0,3), pose.at<float>(1,3), pose.at<float>(2,3) ;
 #endif
 #if 0

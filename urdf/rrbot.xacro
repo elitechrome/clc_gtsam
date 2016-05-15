@@ -23,6 +23,7 @@
     <parent link="world"/>
     <child link="rect"/>
     <origin xyz="0.15 0.45 0.00000" rpy="0 0 -0.61546"/>
+    <!--<origin xyz="0.0 0.0 0.00000" rpy="0 0 -0.61546"/>-->
     <axis xyz="0 0 1"/>
   </joint>
 

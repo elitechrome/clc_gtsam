@@ -41,7 +41,7 @@ public:
 public:
     bool SetOffCenteredQuad(vector<Point2f> &points);
     bool FindProxyQuadrilateral();
-    bool CalcCLC(Vector3d &trans, Quaternion<double> &q);
+    bool CalcCLC(Vector3d &trans, Quaternion<double> &q, double distance);
     void Visualization(Mat &out);
     
 private:
