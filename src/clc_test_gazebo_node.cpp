@@ -116,8 +116,10 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
     tf::StampedTransform transform;
     try{
         ros::Time now = ros::Time(0);
-        listener.waitForTransform("/camera_frame", "/rect", now, ros::Duration(1));
-        listener.lookupTransform("/camera_frame", "/rect", now, transform);
+//        listener.waitForTransform("/camera_frame", "/rect", now, ros::Duration(1));
+//        listener.lookupTransform("/camera_frame", "/rect", now, transform);
+        listener.waitForTransform("/map", "/zed_optical_frame", now, ros::Duration(1));
+        listener.lookupTransform("/map", "/zed_optical_frame", now, transform);
         tf::Matrix3x3 rot = transform.getBasis();
         tf::Vector3 trans = transform.getOrigin();
         cv::Mat extrinsic = (cv::Mat_<double>(3, 4) <<
@@ -153,8 +155,8 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
         cv::Mat image;
         original_image.copyTo(image);
         //resize(image, image, Size(640, 480), 0, 0, INTER_LINEAR);
-        CLC clc(283.11208, 283.11208, 320, 240);
-        //clc.findSquares(image, squares);
+        CLC clc(682.668212890625, 682.668212890625, 628.8949584960938, 385.1582336425781);
+        clc.findSquares(image, squares);
 
         vector<Pose3> clcPoses;
 

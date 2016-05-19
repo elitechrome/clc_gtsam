@@ -379,7 +379,7 @@ void CLC::Visualization(cv::Mat &out)
 #define DEG2RAD 0.017453293f
 int thresh = 50, N = 1;
 const char* wndname = "Square Detection Demo";
-static double angle( Point pt1, Point pt2, Point pt0 )
+double CLC::angle( Point2f pt1, Point2f pt2, Point2f pt0 )
 {
     double dx1 = pt1.x - pt0.x;
     double dy1 = pt1.y - pt0.y;
@@ -482,61 +482,141 @@ HoughLinesStandard( const Mat& img, float rho, float theta,
     }
 }
 
-void CLC::findSquares( const Mat& image, vector<vector<Point2f> >& squares ){
-    squares.clear();
+//void CLC::findSquares( const Mat& image, vector<vector<Point2f> >& squares ){
+//    squares.clear();
     
-    Mat grayImg, binImg, edgeImg;
-    Mat dst;
-    image.copyTo(dst);
-    cvtColor(image, grayImg, CV_BGR2GRAY);
-    threshold(grayImg, binImg, 150, 255, THRESH_OTSU);
-    Canny(binImg, edgeImg, 100, 100, 3);
+//    Mat grayImg, binImg, edgeImg;
+//    Mat dst;
+//    image.copyTo(dst);
+//    cvtColor(image, grayImg, CV_BGR2GRAY);
+//    threshold(grayImg, binImg, 150, 255, THRESH_OTSU);
+//    Canny(binImg, edgeImg, 100, 100, 3);
     
-    vector<Vec2f> lines;
-    //HoughLines(edgeImg, lines, 1, CV_PI/360, 30, 0, 0 );
+//    vector<Vec2f> lines;
+//    //HoughLines(edgeImg, lines, 1, CV_PI/360, 30, 0, 0 );
     
-    HoughLinesStandard(edgeImg, 1, CV_PI/360, 30, lines, INT_MAX, 0, CV_PI);
+//    HoughLinesStandard(edgeImg, 1, CV_PI/360, 30, lines, INT_MAX, 0, CV_PI);
 
-    vector<Point2d> crossPoints;
+//    vector<Point2d> crossPoints;
     
-    RNG rng(53242);
-    crossPoints.clear();
-    for( size_t i = 0; i < lines.size(); i++ )
-        for(size_t j =0 ; j < lines.size(); j++)
+//    RNG rng(53242);
+//    crossPoints.clear();
+//    for( size_t i = 0; i < lines.size(); i++ )
+//        for(size_t j =0 ; j < lines.size(); j++)
+//        {
+//            float rho0 = lines[i][0], theta0 = lines[i][1];
+//            Point pt1, pt2, pt3, pt4;
+//            double a0 = cos(theta0), b0 = sin(theta0);
+//            double x0 = a0*rho0, y0 = b0*rho0;
+//            pt1.x = cvRound(x0 + 1000*(-b0));
+//            pt1.y = cvRound(y0 + 1000*(a0));
+//            pt2.x = cvRound(x0 - 1000*(-b0));
+//            pt2.y = cvRound(y0 - 1000*(a0));
+//            if(i!=j){
+//                float rho1 = lines[j][0], theta1 = lines[j][1];
+//                double a1 = cos(theta1), b1 = sin(theta1);
+//                double x1 = a1*rho1, y1 = b1*rho1;
+//                pt3.x = cvRound(x1 + 1000*(-b1));
+//                pt3.y = cvRound(y1 + 1000*(a1));
+//                pt4.x = cvRound(x1 - 1000*(-b1));
+//                pt4.y = cvRound(y1 - 1000*(a1));
+//                //crossPoints.push_back(GetIntersectPoint(Point2d(pt1.x, pt1.y), Point2d(pt2.x, pt2.y), Point2d(pt3.x, pt3.y), Point2d(pt4.x, pt4.y)));
+//                line( dst, pt3, pt4, Scalar(rng.uniform(0,255), rng.uniform(0,255), rng.uniform(0,255)), 1, CV_AA);
+//            }
+//            if(i==0){
+//                //line( dst, pt1, pt2, Scalar(0,0,255), 1, CV_AA);
+//            }
+//        }
+//    for(size_t i =0 ; i < crossPoints.size(); i++){
+//        Point tmp;
+//        tmp.x=cvRound(crossPoints[i].x);
+//        tmp.y=cvRound(crossPoints[i].y);
+//        //circle(dst, tmp, 5, cv::Scalar(0, 255, 0), 4, 5);
+//    }
+//    imshow("test",dst);
+//    waitKey(1);
+    
+//}
+void CLC::findSquares( const Mat& image, vector<vector<Point2f> >& squares )
+{
+    squares.clear();
+
+    Mat pyr, timg, gray0(image.size(), CV_8U), gray;
+
+    // down-scale and upscale the image to filter out the noise
+    pyrDown(image, pyr, Size(image.cols/2, image.rows/2));
+    pyrUp(pyr, timg, image.size());
+    vector<vector<Point> > contours;
+
+    // find squares in every color plane of the image
+    for( int c = 0; c < 3; c++ )
+    {
+        int ch[] = {c, 0};
+        mixChannels(&timg, 1, &gray0, 1, ch, 1);
+
+        // try several threshold levels
+        for( int l = 0; l < N; l++ )
         {
-            float rho0 = lines[i][0], theta0 = lines[i][1];
-            Point pt1, pt2, pt3, pt4;
-            double a0 = cos(theta0), b0 = sin(theta0);
-            double x0 = a0*rho0, y0 = b0*rho0;
-            pt1.x = cvRound(x0 + 1000*(-b0));
-            pt1.y = cvRound(y0 + 1000*(a0));
-            pt2.x = cvRound(x0 - 1000*(-b0));
-            pt2.y = cvRound(y0 - 1000*(a0));
-            if(i!=j){
-                float rho1 = lines[j][0], theta1 = lines[j][1];
-                double a1 = cos(theta1), b1 = sin(theta1);
-                double x1 = a1*rho1, y1 = b1*rho1;
-                pt3.x = cvRound(x1 + 1000*(-b1));
-                pt3.y = cvRound(y1 + 1000*(a1));
-                pt4.x = cvRound(x1 - 1000*(-b1));
-                pt4.y = cvRound(y1 - 1000*(a1));
-                //crossPoints.push_back(GetIntersectPoint(Point2d(pt1.x, pt1.y), Point2d(pt2.x, pt2.y), Point2d(pt3.x, pt3.y), Point2d(pt4.x, pt4.y)));
-                line( dst, pt3, pt4, Scalar(rng.uniform(0,255), rng.uniform(0,255), rng.uniform(0,255)), 1, CV_AA);
+            // hack: use Canny instead of zero threshold level.
+            // Canny helps to catch squares with gradient shading
+            if( l == 0 )
+            {
+                // apply Canny. Take the upper threshold from slider
+                // and set the lower to 0 (which forces edges merging)
+                Canny(gray0, gray, 0, thresh, 5);
+                // dilate canny output to remove potential
+                // holes between edge segments
+                dilate(gray, gray, Mat(), Point(-1,-1));
             }
-            if(i==0){
-                //line( dst, pt1, pt2, Scalar(0,0,255), 1, CV_AA);
+            else
+            {
+                // apply threshold if l!=0:
+                //     tgray(x,y) = gray(x,y) < (l+1)*255/N ? 255 : 0
+                gray = gray0 >= (l+1)*255/N;
+            }
+
+            // find contours and store them all as a list
+            findContours(gray, contours, RETR_LIST, CHAIN_APPROX_SIMPLE);
+
+            vector<Point2f> approx;
+
+            // test each contour
+            for( size_t i = 0; i < contours.size(); i++ )
+            {
+                // approximate contour with accuracy proportional
+                // to the contour perimeter
+                approxPolyDP(Mat(contours[i]), approx, arcLength(Mat(contours[i]), true)*0.02, true);
+
+                // square contours should have 4 vertices after approximation
+                // relatively large area (to filter out noisy contours)
+                // and be convex.
+                // Note: absolute value of an area is used because
+                // area may be positive or negative - in accordance with the
+                // contour orientation
+                if( approx.size() == 4 &&
+                    fabs(contourArea(Mat(approx))) > 1000 &&
+                    isContourConvex(Mat(approx)) )
+                {
+                    double maxCosine = 0;
+
+                    for( int j = 2; j < 5; j++ )
+                    {
+                        // find the maximum cosine of the angle between joint edges
+                        double cosine = fabs(angle(approx[j%4], approx[j-2], approx[j-1]));
+                        maxCosine = MAX(maxCosine, cosine);
+                    }
+
+                    // if cosines of all angles are small
+                    // (all angles are ~90 degree) then write quandrange
+                    // vertices to resultant sequence
+                    if( maxCosine < 0.7 )
+                        squares.push_back(approx);
+                }
             }
         }
-    for(size_t i =0 ; i < crossPoints.size(); i++){
-        Point tmp;
-        tmp.x=cvRound(crossPoints[i].x);
-        tmp.y=cvRound(crossPoints[i].y);
-        //circle(dst, tmp, 5, cv::Scalar(0, 255, 0), 4, 5);
     }
-    imshow("test",dst);
-    waitKey(1);
-    
 }
+
 
 void CLC::drawSquares( Mat& image, const vector<vector<Point2f> >& squares )
 {

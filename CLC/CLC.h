@@ -33,6 +33,7 @@ private:
     Point2f GetIntersectPoint(const Point2f &p1, const Point2f &p2, const Point2f &p3, const Point2f &p4);
     inline double GetDistance(const Point2f &p1, const Point2f &p2);
     double angle( Point2f pt1, Point2f pt2, Point2f pt0 );
+
     
 public:
     void findSquares( const Mat& image, vector<vector<Point2f> >& squares );
