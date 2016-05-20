@@ -1,29 +1,19 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 #include <Eigen/Eigen>
-//Todo : use only OpenCV or Eigen to manipulate vectors/quaternions.
 using namespace std;
 using namespace cv;
 using namespace Eigen;
 
-class Quadrilateral{
-    //3 leveled tree structure to autonomously sort points by positions.
-    // quad->(right/left)->(top/bottom)
-    //convexity check (e.g. isContourConvex func. in OpenCV)
-public:
-    vector<Point2f> points;
-    bool SortPoints();
-    bool SortPoints(vector<Point2f> &points);
-};
 class RectFeature{
-private:
-    //geometric information
-    Quadrilateral imageQuad;
-
-
+public:
+    vector<Point2f> imageQuad;
+    Eigen::Vector3d rectCenter;
+    Eigen::Quaternion<double> rectOrientation;
+    double diag_lenght;
     double aspectRatio;
     Mat imagePatch;
-
+    //
 };
 class CLC{
 public:
@@ -42,14 +32,14 @@ public:
 public:
     bool SetOffCenteredQuad(vector<Point2f> &points);
     bool FindProxyQuadrilateral();
-    bool CalcCLC(Vector3d &trans, Quaternion<double> &q, double distance);
+    bool CalcCLC(Vector3d &trans, Quaternion<double> &q, double distance, RectFeature &feature);
     void Visualization(Mat &out);
-    
+    bool SortPoints(vector<Point2f> &points);
 private:
     int thresh, N;
     const char* wndname;
-    Quadrilateral quadOffCentered;
-    Quadrilateral quadCentered;
+    RectFeature quadOffCentered;
+    RectFeature quadCentered;
     Point2d um, om;
     Point2d w0, w1;
     Point2d u0, u1, u2, u3;

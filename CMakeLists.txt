@@ -1,6 +1,6 @@
 project(clc_gtsam)
 cmake_minimum_required(VERSION 2.6)
-set(CMAKE_BUILD_TYPE Debug)
+#set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 ##ROS catkin packages
 find_package(catkin REQUIRED COMPONENTS
@@ -31,8 +31,7 @@ if(UNIX AND NOT APPLE)
    endif()
 
 find_package(GTSAM)
-find_package( OpenCV )
-
+find_package(OpenCV 3.1.0 REQUIRED)
 ##Build
 include_directories(CLC)
 add_library(clc CLC/CLC.cpp)
@@ -56,7 +55,7 @@ catkin_package(
 
 ## Declare a ros cpp executable
 add_executable(clc_test_gazebo_node src/clc_test_gazebo_node.cpp)
-
+add_executable(clc_test_zed_node src/clc_test_zed_node.cpp)
 add_executable(clc_test src/main.cpp)
 
 target_link_libraries(clc
@@ -66,6 +65,12 @@ target_link_libraries(clc_test
     gtsam
     ${OpenCV_LIBS}
     clc
+)
+target_link_libraries(clc_test_zed_node
+    clc
+    gtsam
+    ${OpenCV_LIBS}
+    ${catkin_LIBRARIES}
 )
 target_link_libraries(clc_test_gazebo_node
     clc

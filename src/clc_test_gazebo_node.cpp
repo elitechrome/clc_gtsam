@@ -28,7 +28,7 @@ using namespace std;
 using namespace Eigen;
 using namespace gtsam;
 
-std::vector<Quadrilateral> vecQuad;
+std::vector<RectFeature> vecFeature;
 vector<Pose3> vecPoses;
 int num =0;
 std::vector<cv::Point2f> keypoints1;
@@ -164,7 +164,8 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
             ROS_ERROR("No Image");
             return;
         }
-        noiseModel::Diagonal::shared_ptr odometryNoise = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(0.3),gtsam::Vector3::Constant(0.1))); // 20cm std on x,y, 0.1 rad on theta
+        noiseModel::Diagonal::shared_ptr odometryNoise
+                = noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << gtsam::Vector3::Constant(1),gtsam::Vector3::Constant(3)));
         Pose3 odometry(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0));
         Pose3 currentPose(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0));
 
@@ -205,7 +206,8 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
                 clc.SetOffCenteredQuad(keypoints1);
                 clc.FindProxyQuadrilateral();
                 Eigen::Vector3d trans; Eigen::Quaternion<double> q;
-                if(!clc.CalcCLC(trans, q, 1.0))
+                RectFeature tmp_feature;
+                if(!clc.CalcCLC(trans, q, 1.0, tmp_feature))
                 {
                     std::cerr << "CLC is NaN" << std::endl;
                     continue;
