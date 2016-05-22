@@ -235,7 +235,7 @@ int main(int argc, char** argv)
                 clc.FindProxyQuadrilateral();
                 Vector3d trans; Eigen::Quaternion<double> q;
                 RectFeature tmp_feature;
-                if(!clc.CalcCLC(trans, q, 1.0, tmp_feature))
+                if(!clc.CalcCLC(trans, q, 1.0, tmp_feature, original_image))
                 {
                     std::cerr << "CLC is NaN" << std::endl;
                     continue;

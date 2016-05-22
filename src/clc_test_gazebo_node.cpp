@@ -207,7 +207,7 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
                 clc.FindProxyQuadrilateral();
                 Eigen::Vector3d trans; Eigen::Quaternion<double> q;
                 RectFeature tmp_feature;
-                if(!clc.CalcCLC(trans, q, 1.0, tmp_feature))
+                if(!clc.CalcCLC(trans, q, 1.0, tmp_feature, image))
                 {
                     std::cerr << "CLC is NaN" << std::endl;
                     continue;

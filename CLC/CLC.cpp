@@ -133,7 +133,7 @@ bool CLC::FindProxyQuadrilateral()
     quadCentered.imageQuad.push_back(u2); quadCentered.imageQuad.push_back(u3);
     return true;
 }
-bool CLC::CalcCLC(Vector3d &trans, Quaternion<double> &q, double distance, RectFeature &feature)
+bool CLC::CalcCLC(Vector3d &trans, Quaternion<double> &q, double distance, RectFeature &feature, cv::Mat &img)
 {
     //determinate that the projective quadrilateral is rectangle in real world
     double l0 = sqrt(pow((quadCentered.imageQuad[0].x - um.x), 2) + pow((quadCentered.imageQuad[0].y - um.y), 2));
@@ -175,7 +175,7 @@ bool CLC::CalcCLC(Vector3d &trans, Quaternion<double> &q, double distance, RectF
     //cout<<"Crossing Angle : "<<phi<<endl;
     double psi1, psi2;
     psi1 = atan2(sqrt(pow(cx-(quadOffCentered.imageQuad[0].x+quadOffCentered.imageQuad[2].x)*0.5,2)+pow(cy-(quadOffCentered.imageQuad[0].y+quadOffCentered.imageQuad[2].y)*0.5,2)),(fx+fy)*0.5);
-    psi2 = M_PI*0.5 - acos(d *sin(theta0)*sin(theta1)*sin(rho) / sin(phi));
+    psi2 = M_PI*0.5 - acos(sin(theta0)*sin(theta1)*sin(rho) / sin(phi));
     d=distance*sin(psi1+psi2)/sin(psi2);
 
     Point3d pc(d *cos(theta0)*sin(phi) / sin(phi), -d *cos(theta0)*cos(phi) + cos(theta1) / sin(phi), d *sin(theta0)*sin(theta1)*sin(rho) / sin(phi));
@@ -292,10 +292,27 @@ bool CLC::CalcCLC(Vector3d &trans, Quaternion<double> &q, double distance, RectF
     std::cout << "vector translate:\n" << vecTranslate.x << ", " << vecTranslate.y << std::endl;
     //std::cout << lambda <<std::endl;
 #endif
+
     feature.aspectRatio = phi;
     feature.diag_lenght = m;
     feature.rectCenter = trans;
     feature.rectOrientation = q;
+    cv::Mat warpRect, transformMatrix;
+    Point2f src[4], dst[4];
+    dst[3] = Point2f( 0, 0 );
+    dst[0] = Point2f( 0, 128 );
+    dst[1] = Point2f( 128, 128 );
+    dst[2] = Point2f( 128, 0 );
+
+    src[0] = Point2f( quadOffCentered.imageQuad[0].x, quadOffCentered.imageQuad[0].y );
+    src[1] = Point2f( quadOffCentered.imageQuad[1].x, quadOffCentered.imageQuad[1].y );
+    src[2] = Point2f( quadOffCentered.imageQuad[2].x, quadOffCentered.imageQuad[2].y );
+    src[3] = Point2f( quadOffCentered.imageQuad[3].x, quadOffCentered.imageQuad[3].y );
+    transformMatrix = getPerspectiveTransform(src, dst);
+    warpPerspective(img, warpRect, transformMatrix, Size(128, 128));
+    warpRect.copyTo(feature.imagePatch);
+    //imshow("test_patch", warpRect);
+    //cv::waitKey(0);
     return true;
 }
 
@@ -405,6 +422,7 @@ void CLC::findSquares( const Mat& image, vector<vector<Point2f> >& squares )
                 // contour orientation
                 if( approx.size() == 4 &&
                     fabs(contourArea(Mat(approx))) > 1000 &&
+                    fabs(contourArea(Mat(approx))) < gray.rows*gray.cols*0.6 &&
                     isContourConvex(Mat(approx)) )
                 {
                     double maxCosine = 0;

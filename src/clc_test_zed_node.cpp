@@ -95,49 +95,50 @@ public:
         //Get TF
         tf::TransformListener listener;
         tf::StampedTransform transform;
-        try{
-            ros::Time now = ros::Time(0);
-    //        listener.waitForTransform("/camera_frame", "/rect", now, ros::Duration(1));
-    //        listener.lookupTransform("/camera_frame", "/rect", now, transform);
-            listener.waitForTransform("/map", "/zed_frame", now, ros::Duration(1));
-            listener.lookupTransform("/map", "/zed_frame", now, transform);
-            tf::Matrix3x3 rot = transform.getBasis();
-            tf::Vector3 trans = transform.getOrigin();
-            cv::Mat extrinsic = (cv::Mat_<double>(3, 4) <<
-                                  1,  0,  0, 0,
-                                  0,  1,  0, 0,
-                                  0,  0,  1, 0);
+//        try{
+//            ros::Time now = ros::Time(0);
+//    //        listener.waitForTransform("/camera_frame", "/rect", now, ros::Duration(1));
+//    //        listener.lookupTransform("/camera_frame", "/rect", now, transform);
+//            listener.waitForTransform("/map", "/zed_frame", now, ros::Duration(1));
+//            listener.lookupTransform("/map", "/zed_frame", now, transform);
+//            tf::Matrix3x3 rot = transform.getBasis();
+//            tf::Vector3 trans = transform.getOrigin();
+//            cv::Mat extrinsic = (cv::Mat_<double>(3, 4) <<
+//                                  1,  0,  0, 0,
+//                                  0,  1,  0, 0,
+//                                  0,  0,  1, 0);
 
 
-            cv::Mat R = (cv::Mat_<double>(3, 3)    <<
-            rot[0][0], rot[0][1], rot[0][2],
-            rot[1][0], rot[1][1], rot[1][2],
-            rot[2][0], rot[2][1], rot[2][2]
-            );
+//            cv::Mat R = (cv::Mat_<double>(3, 3)    <<
+//            rot[0][0], rot[0][1], rot[0][2],
+//            rot[1][0], rot[1][1], rot[1][2],
+//            rot[2][0], rot[2][1], rot[2][2]
+//            );
 
-            cv::Mat tvec = (cv::Mat_<double>(3, 1) << trans[0],trans[1],trans[2]);
-            R.copyTo(extrinsic.rowRange(0, 3).colRange(0, 3));
-            tvec.copyTo(extrinsic.rowRange(0, 3).col(3));
+//            cv::Mat tvec = (cv::Mat_<double>(3, 1) << trans[0],trans[1],trans[2]);
+//            R.copyTo(extrinsic.rowRange(0, 3).colRange(0, 3));
+//            tvec.copyTo(extrinsic.rowRange(0, 3).col(3));
 
-            std::cout << "extrinsic(tf):\n" << extrinsic  <<std::endl;
-            tf::Quaternion rot_qt = transform.getRotation();
-            std::cout << "q(tf):\n" << rot_qt.getW() << "," << rot_qt.getX() << "," << rot_qt.getY() << "," << rot_qt.getZ() <<std::endl;
-        }
-        catch (tf::TransformException ex){
-            ROS_ERROR("%s",ex.what());
-            ros::Duration(1.0).sleep();
-        }
+//            std::cout << "extrinsic(tf):\n" << extrinsic  <<std::endl;
+//            tf::Quaternion rot_qt = transform.getRotation();
+//            std::cout << "q(tf):\n" << rot_qt.getW() << "," << rot_qt.getX() << "," << rot_qt.getY() << "," << rot_qt.getZ() <<std::endl;
+//        }
+//        catch (tf::TransformException ex){
+//            ROS_ERROR("%s",ex.what());
+//            ros::Duration(1.0).sleep();
+//        }
+        RNG rng(12345);
 
         try
         {
             num++;
             std::vector<vector<Point2f> > left_squares, left_matched_squares;
-            std::vector<int>left_matched_squares_distance;
+            std::vector<double>left_matched_squares_distance;
             cv::Mat left_image = cv_bridge::toCvShare(left_msg, "bgr8")->image;
             cv::Mat right_image = cv_bridge::toCvShare(right_msg, "bgr8")->image;
 
-            cv::Mat image;
-            left_image.copyTo(image);
+            cv::Mat left_image_copied;
+            left_image.copyTo(left_image_copied);
             //resize(image, image, Size(640, 480), 0, 0, INTER_LINEAR);
             CLC clc(682.668212890625, 682.668212890625, 628.8949584960938, 385.1582336425781);
 
@@ -158,16 +159,11 @@ public:
             graph.add(BetweenFactor<Pose3>(Symbol('x', num-1), Symbol('x', num), odometry, odometryNoise));
             initialEstimate.insert(Symbol('x', num), vecPoses[num].compose(Pose3(Rot3::rodriguez(0, 0, 0), Point3(0, 0, 0))));
 
-            cv::namedWindow("Image", CV_WINDOW_AUTOSIZE);
-
-            inputFlag = cv::waitKey(1);
-
             //3. CLC Pose Calculation for each rectangle
             int ID_rect=0;
-            cv::imshow("Image", left_image);
+            //cv::imshow("Image", left_image);
             clc.findSquares(left_image, left_squares);
-            //clc.findSquares(right_image, right_squares);
-            clc.drawSquares(image, left_squares);
+            clc.drawSquares(left_image_copied, left_squares);
             //Todo. Square matching
 
             cv::Ptr<Feature2D> f2d = xfeatures2d::SIFT::create();
@@ -175,15 +171,20 @@ public:
             //cv::Ptr<Feature2D> f2d = ORB::create();
             // you get the picture, i hope..
 
+            cv::Mat leftImageGray, rightImageGray;
+            cv::cvtColor(left_image, leftImageGray,CV_BGR2GRAY);
+            cv::cvtColor(right_image, rightImageGray,CV_BGR2GRAY);
             //-- Step 1: Detect the keypoints:
-            std::vector<KeyPoint> keypoints_l1, keypoints_l2, keypoints_l3, keypoints_l4;
-            std::vector<KeyPoint> keypoints_r1, keypoints_r2, keypoints_r3, keypoints_r4;
+            std::vector<KeyPoint> keypoints_l1, keypoints_l2, keypoints_l3, keypoints_l4, keypoints_lc;
+            std::vector<KeyPoint> keypoints_r1, keypoints_r2, keypoints_r3, keypoints_r4, keypoints_rc;
             //f2d->detect( left_image, keypoints_1 );
             //f2d->detect( right_image, keypoints_2 );
+            cv::Mat merge_image;
+            cv::vconcat(left_image_copied, right_image, merge_image);
             for(int i = 0; i < left_squares.size();i++)
             {
-                keypoints_l1.clear();keypoints_l2.clear();keypoints_l3.clear();keypoints_l4.clear();
-                keypoints_r1.clear();keypoints_r2.clear();keypoints_r3.clear();keypoints_r4.clear();
+                keypoints_l1.clear();keypoints_l2.clear();keypoints_l3.clear();keypoints_l4.clear();keypoints_lc.clear();
+                keypoints_r1.clear();keypoints_r2.clear();keypoints_r3.clear();keypoints_r4.clear();keypoints_rc.clear();
                 keypoints_l1.push_back(KeyPoint(left_squares[i][0], 1));
                 keypoints_l2.push_back(KeyPoint(left_squares[i][1], 1));
                 keypoints_l3.push_back(KeyPoint(left_squares[i][2], 1));
@@ -197,88 +198,107 @@ public:
                 //-- Step 2: Calculate descriptors (feature vectors)
                 Mat descriptors_l1, descriptors_l2, descriptors_l3, descriptors_l4;
                 Mat descriptors_r1, descriptors_r2, descriptors_r3, descriptors_r4;
-                f2d->compute( left_image, keypoints_l1, descriptors_l1 );
-                f2d->compute( left_image, keypoints_l2, descriptors_l2 );
-                f2d->compute( left_image, keypoints_l3, descriptors_l3 );
-                f2d->compute( left_image, keypoints_l4, descriptors_l4 );
-                f2d->compute( right_image, keypoints_r1, descriptors_r1 );
-                f2d->compute( right_image, keypoints_r2, descriptors_r2 );
-                f2d->compute( right_image, keypoints_r3, descriptors_r3 );
-                f2d->compute( right_image, keypoints_r4, descriptors_r4 );
-
+                f2d->compute( leftImageGray, keypoints_l1, descriptors_l1 );
+                f2d->compute( leftImageGray, keypoints_l2, descriptors_l2 );
+                f2d->compute( leftImageGray, keypoints_l3, descriptors_l3 );
+                f2d->compute( leftImageGray, keypoints_l4, descriptors_l4 );
+                f2d->compute( rightImageGray, keypoints_r1, descriptors_r1 );
+                f2d->compute( rightImageGray, keypoints_r2, descriptors_r2 );
+                f2d->compute( rightImageGray, keypoints_r3, descriptors_r3 );
+                f2d->compute( rightImageGray, keypoints_r4, descriptors_r4 );
 
                 //-- Step 3: Matching descriptor vectors using BFMatcher :
                 std::vector< DMatch > matches_l1, matches_l2, matches_l3, matches_l4;
                 Ptr<DescriptorMatcher> matcher = DescriptorMatcher::create("BruteForce");
-                matcher->match(descriptors_l1, descriptors_r1, matches_l1, 1 );
-                matcher->match(descriptors_l2, descriptors_r2, matches_l2, 1 );
-                matcher->match(descriptors_l3, descriptors_r3, matches_l3, 1 );
-                matcher->match(descriptors_l4, descriptors_r4, matches_l4, 1 );
+                matcher->match(descriptors_l1, descriptors_r1, matches_l1);
+                matcher->match(descriptors_l2, descriptors_r2, matches_l2);
+                matcher->match(descriptors_l3, descriptors_r3, matches_l3);
+                matcher->match(descriptors_l4, descriptors_r4, matches_l4);
 
                 double max_dist_r1 = 0,max_dist_r2 = 0,max_dist_r3 = 0,max_dist_r4 = 0;
                 int best_r1=-1,best_r2=-1,best_r3=-1,best_r4=-1;
 
-//                for( int i = 0; i < descriptors_l1.rows; i++ )
-//                { double dist = matches_l1[i].distance;
-//                    if( dist > max_dist_r1 ){
-//                        max_dist_r1 = dist;
-//                        best_r1 = i;
-//                    }
-//                    dist = matches_l2[i].distance;
-//                    if( dist > max_dist_r2 ){
-//                        max_dist_r2 = dist;
-//                        best_r2 = i;
-//                    }
-//                    dist = matches_l3[i].distance;
-//                    if( dist > max_dist_r3 ){
-//                        max_dist_r3 = dist;
-//                        best_r3 = i;
-//                    }
-//                    dist = matches_l4[i].distance;
-//                    if( dist > max_dist_r4 ){
-//                        max_dist_r4 = dist;
-//                        best_r4 = i;
-//                    }
-//                }
-                max_dist_r1 = matches_l1[0].distance;
-                max_dist_r2 = matches_l2[0].distance;
-                max_dist_r3 = matches_l3[0].distance;
-                max_dist_r4 = matches_l4[0].distance;
+                for( int i = 0; i < descriptors_l1.rows; i++ )
+                { double dist = matches_l1[i].distance;
+                    if( dist > max_dist_r1 ){
+                        max_dist_r1 = dist;
+                        best_r1 = i;
+                    }
+                    dist = matches_l2[i].distance;
+                    if( dist > max_dist_r2 ){
+                        max_dist_r2 = dist;
+                        best_r2 = i;
+                    }
+                    dist = matches_l3[i].distance;
+                    if( dist > max_dist_r3 ){
+                        max_dist_r3 = dist;
+                        best_r3 = i;
+                    }
+                    dist = matches_l4[i].distance;
+                    if( dist > max_dist_r4 ){
+                        max_dist_r4 = dist;
+                        best_r4 = i;
+                    }
+                }
+//                max_dist_r1 = matches_l1[0].distance;
+//                max_dist_r2 = matches_l2[0].distance;
+//                max_dist_r3 = matches_l3[0].distance;
+//                max_dist_r4 = matches_l4[0].distance;
 
-                if(max_dist_r1>100 || max_dist_r2 >100)
+                if(max_dist_r1>200 || max_dist_r2 >200)
                     continue;
-                else if(max_dist_r1>100 || max_dist_r2 >100)
+                else if(max_dist_r3>200 || max_dist_r4 >200)
                     continue;
                 else{
-                    std::vector<cv::Point2f> tmp_square;
-                    tmp_square.push_back(keypoints_l1[matches_l1[0].queryIdx].pt);
-                    tmp_square.push_back(keypoints_l2[matches_l2[0].queryIdx].pt);
-                    tmp_square.push_back(keypoints_l3[matches_l3[0].queryIdx].pt);
-                    tmp_square.push_back(keypoints_l4[matches_l4[0].queryIdx].pt);
                     Point2f leftCenter(
-                        (keypoints_l1[matches_l1[0].trainIdx].pt.x+
-                        keypoints_l2[matches_l2[0].trainIdx].pt.x+
-                        keypoints_l3[matches_l3[0].trainIdx].pt.x+
-                        keypoints_l4[matches_l4[0].trainIdx].pt.x)/2.,
-                        (keypoints_l1[matches_l1[0].trainIdx].pt.y+
-                        keypoints_l2[matches_l2[0].trainIdx].pt.y+
-                        keypoints_l3[matches_l3[0].trainIdx].pt.y+
-                        keypoints_l4[matches_l4[0].trainIdx].pt.y)/2.);
+                        (keypoints_l1[matches_l1[best_r1].queryIdx].pt.x+
+                        keypoints_l2[matches_l2[best_r2].queryIdx].pt.x+
+                        keypoints_l3[matches_l3[best_r3].queryIdx].pt.x+
+                        keypoints_l4[matches_l4[best_r4].queryIdx].pt.x)/4.,
+                        (keypoints_l1[matches_l1[best_r1].queryIdx].pt.y+
+                        keypoints_l2[matches_l2[best_r2].queryIdx].pt.y+
+                        keypoints_l3[matches_l3[best_r3].queryIdx].pt.y+
+                        keypoints_l4[matches_l4[best_r4].queryIdx].pt.y)/4.);
                     Point2f rightCenter(
-                        (keypoints_r1[matches_l1[0].trainIdx].pt.x+
-                        keypoints_r2[matches_l2[0].trainIdx].pt.x+
-                        keypoints_r3[matches_l3[0].trainIdx].pt.x+
-                        keypoints_r4[matches_l4[0].trainIdx].pt.x)/2.,
-                        (keypoints_r1[matches_l1[0].trainIdx].pt.y+
-                        keypoints_r2[matches_l2[0].trainIdx].pt.y+
-                        keypoints_r3[matches_l3[0].trainIdx].pt.y+
-                        keypoints_r4[matches_l4[0].trainIdx].pt.y)/2.);
-                    double tmp_dist =0; double focal_lenght=682.668212890625; double baseline = 0.12; double centerZ = 0;
+                        (keypoints_r1[matches_l1[best_r1].trainIdx].pt.x+
+                        keypoints_r2[matches_l2[best_r2].trainIdx].pt.x+
+                        keypoints_r3[matches_l3[best_r3].trainIdx].pt.x+
+                        keypoints_r4[matches_l4[best_r4].trainIdx].pt.x)/4.,
+                        (keypoints_r1[matches_l1[best_r1].trainIdx].pt.y+
+                        keypoints_r2[matches_l2[best_r2].trainIdx].pt.y+
+                        keypoints_r3[matches_l3[best_r3].trainIdx].pt.y+
+                        keypoints_r4[matches_l4[best_r4].trainIdx].pt.y)/4.);
+
+                    keypoints_lc.push_back(KeyPoint(leftCenter, 1));
+                    keypoints_rc.push_back(KeyPoint(rightCenter, 1));
+                    Mat descriptors_lc, descriptors_rc;
+                    std::vector< DMatch > matches_lc;
+
+                    f2d->compute( leftImageGray, keypoints_lc, descriptors_lc );
+                    f2d->compute( rightImageGray, keypoints_rc, descriptors_rc );
+                    matcher->match(descriptors_lc, descriptors_rc, matches_lc);
+                    if(matches_lc[0].distance > 600){
+                        continue;
+                    }
+                    std::vector<cv::Point2f> tmp_square;
+                    tmp_square.push_back(keypoints_l1[matches_l1[best_r1].queryIdx].pt);
+                    tmp_square.push_back(keypoints_l2[matches_l2[best_r2].queryIdx].pt);
+                    tmp_square.push_back(keypoints_l3[matches_l3[best_r3].queryIdx].pt);
+                    tmp_square.push_back(keypoints_l4[matches_l4[best_r4].queryIdx].pt);
+
+
+                    double tmp_dist =0; double focal_lenght=682.668212890625*0.001; double baseline = 0.12; double centerZ = 0;
                     centerZ = baseline*focal_lenght/fabs(leftCenter.x-rightCenter.x);
                     tmp_dist = sqrt(pow(leftCenter.x*centerZ/focal_lenght,2)+pow(leftCenter.y*centerZ/focal_lenght,2)+centerZ);
+                    Scalar color = Scalar( rng.uniform(0, 255), rng.uniform(0,255), rng.uniform(0,255) );
+                    circle(merge_image, leftCenter, 5, color, 4, 5);
+                    circle(merge_image, Point2f(rightCenter.x,rightCenter.y+left_image.rows), 5, color, 4, 5);
+                    cv::line(merge_image,leftCenter,Point2f(rightCenter.x,rightCenter.y+left_image.rows),color);
 
+                    imshow("merge_image", merge_image);
                     left_matched_squares.push_back(tmp_square);
                     left_matched_squares_distance.push_back(tmp_dist);
+                    ROS_INFO("matched");
                 }
 
             }
@@ -287,15 +307,16 @@ public:
 
 //            left_matched_squares = left_squares;
 
-            double distance=1;
+            //double distance=1;
 
             for(int i = 0; i < left_matched_squares.size();i++){
                 clc.SetOffCenteredQuad(left_matched_squares[i]);
                 clc.FindProxyQuadrilateral();
                 Eigen::Vector3d trans; Eigen::Quaternion<double> q;
                 RectFeature tmp_feature;
-                double aspectRatio = clc.CalcCLC(trans, q, distance, tmp_feature);
-                if(aspectRatio < 0)
+
+
+                if(!clc.CalcCLC(trans, q, left_matched_squares_distance[i], tmp_feature, left_image))
                 {
                    ROS_ERROR("CLC couldn't pass determinant or the result is nan.");
                     continue;
@@ -312,13 +333,30 @@ public:
                 graph.add(BetweenFactor<Pose3>(Symbol('x', num), Symbol('l', numLandmark), clcPose, clcPoseNoise));
                 clcPoses.push_back(clcPose);
 
-                    //Todo : check landmark symbol is in the graph
-                    initialEstimate.insert(Symbol('l', numLandmark++), currentPose.compose(clcPose));
+                //Todo : check landmark symbol is in the graph
+                initialEstimate.insert(Symbol('l', numLandmark++), currentPose.compose(clcPose));
 
                 //clc.Visualization(image);
-                cv::imshow("Image", image);
+                //cv::imshow("Image", image);
+
                 inputFlag = cv::waitKey(1);
             }
+            cv::Mat merge_patch;
+            cv::Mat tmp(1,128,CV_8UC3);
+
+            for(int i = 0;i<vecQuad.size();i++){
+                if(i==0){
+                    cv::vconcat(tmp, vecQuad[i].imagePatch, merge_patch);
+                }
+                else{
+                    cv::vconcat(merge_patch, vecQuad[i].imagePatch, merge_patch);
+                }
+            }
+            if(!merge_patch.empty()){
+                imshow("merge_patch", merge_patch);
+                inputFlag = cv::waitKey(1);
+            }
+
         }
         catch (cv_bridge::Exception& e)
         {
@@ -351,12 +389,11 @@ int main(int argc, char **argv)
 {
     ros::init(argc, argv, "clc_test_zed");
     ros::NodeHandle nh;
-    cv::namedWindow("Image");
 
     CLCTestZedNode mc;
 
 
-    while(mc.inputFlag != 'q'){
+    while(mc.inputFlag != 'q'&&!ros::isShuttingDown()){
         ros::spinOnce();
         boost::this_thread::sleep(boost::posix_time::millisec(10));
     }
